@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "build": "npm run check",
     "check": "node --check src/server.js && node --check src/app.js",
     "test": "node --test"
   },
