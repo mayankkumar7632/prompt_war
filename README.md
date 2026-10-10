@@ -113,7 +113,40 @@ Student accounts, stories, quiz answers, and progress use MongoDB. Parent and te
 
 Run the frontend and backend in separate terminals from their own folders. For the frontend, run `npm install` and then `npm start` from `client/` (or use `npm run dev`). Vite serves the UI at `http://localhost:5173`. Run `npm run build` there to create a production build.
 
-For the backend, first make sure MongoDB is running and open `server/.env`. Set `MONGODB_URI`, a private `JWT_SECRET` of at least 32 characters, and `GEMINI_API_KEY`; `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`. This file is private and ignored by Git. Then run `npm install` and `npm start` from `server/`; the API listens on port `5000`. Run `npm test` in `server/` for assessment-engine tests. Never put these values in the frontend.
+For the backend, open `server/.env`. Set `MONGODB_URI`, a private `JWT_SECRET` of at least 32 characters, and `GEMINI_API_KEY`; `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`. For local MongoDB, use `mongodb://127.0.0.1:27017/storylearn_ai`. For Atlas, use the `mongodb+srv://` connection string described below. This file is private and ignored by Git. Then run `npm install` and `npm start` from `server/`; the API listens on port `5000`. Run `npm test` in `server/` for assessment-engine tests. Never put database or Gemini credentials in the frontend.
+
+## Deploy the API to Render
+
+The root-level `render.yaml` defines the Express API as a Render Web Service. In Render, create a **Blueprint Instance** from this repository and use the Blueprint defaults. The service builds from `server/` with `npm ci`, starts with `npm start`, and uses `/api/health` for its health check.
+
+During Blueprint setup, provide:
+
+- `MONGODB_URI`: the MongoDB Atlas Node.js connection string. Use the `mongodb+srv://` URI, keep the database name `storylearn_ai`, and URL-encode reserved characters in the username and password.
+- `GEMINI_API_KEY`: your private Gemini API key. The server can start without it, but AI story features need it.
+- `CORS_ORIGIN`: the exact browser origin of the frontend, with no trailing slash (for example, `https://prompt-war-dusky.vercel.app`). For multiple frontends, separate origins with commas.
+
+Render generates `JWT_SECRET` for the service. Do not put any production secrets in `render.yaml`, source control, or frontend build variables. In MongoDB Atlas **Network Access**, allow the Render service's outbound IP addresses; find the current addresses in the Render service settings. Avoid broad public database access where possible.
+
+This Blueprint deploys the **API only**. If the frontend remains on Vercel, set the frontend's build variable `VITE_API_URL` to `https://<your-render-service>.onrender.com/api`, then rebuild and redeploy the frontend. The Render API's `CORS_ORIGIN` must match the deployed frontend origin. The `free` plan in `render.yaml` may spin down when idle; change the service plan in Render if you need it to remain always on.
+
+After deployment, verify `https://<your-render-service>.onrender.com/api/health` returns HTTP 200 and `{"status":"ok","database":"connected"}`. A 503 means the API cannot connect to MongoDB; check the Render logs, connection string, Atlas database user, and Atlas Network Access.
+
+## MongoDB Atlas and Vercel deployment
+
+1. In MongoDB Atlas, create a database user with a strong password and read/write access only to the StoryLearn database. Copy the cluster's **Drivers / Node.js** connection string.
+2. Replace the username, password, and cluster host in the URI. URL-encode reserved characters in the username/password (for example `@` becomes `%40`); do not include the angle-bracket placeholders. Keep the database name `storylearn_ai`, for example:
+
+   ```text
+   mongodb+srv://DB_USER:URL_ENCODED_PASSWORD@cluster-name.example.mongodb.net/storylearn_ai?retryWrites=true&w=majority&appName=StoryLearnAI
+   ```
+
+3. For local testing, put that URI on `MONGODB_URI=` in `server/.env`. For the deployed API, add it as the **server's** `MONGODB_URI` environment variable in the deployment platform's project settings, for Preview and Production as needed. Do not commit the URI, paste it into React, or expose it as a `VITE_` variable.
+4. Add server environment variables `JWT_SECRET` (new random secret, at least 32 characters), `GEMINI_API_KEY`, and `CORS_ORIGIN=https://prompt-war-dusky.vercel.app`. Keep `PORT` platform-provided/defaulted. Use `MONGODB_MAX_POOL_SIZE=5` and `MONGODB_SERVER_SELECTION_TIMEOUT_MS=10000` for the Vercel function deployment.
+5. In Atlas **Network Access**, allow the API host's outbound IP address/range. Serverless hosts may use changing outbound IPs; prefer a static-egress option or a private network. If you temporarily allow `0.0.0.0/0` for a test deployment, use a strong database password and a database user restricted to this app's database, and replace the wide rule with a restricted range when possible.
+6. The Vercel project must use the **repository root** as its Root Directory so it deploys both the React app and `api/[...path].js`. Set `VITE_API_URL=https://prompt-war-dusky.vercel.app/api` as a frontend build variable. Redeploy after configuring all environment variables.
+7. Verify `https://prompt-war-dusky.vercel.app/api/health` returns HTTP 200 and `{"status":"ok","database":"connected"}`. A 503 means the function cannot connect to Atlas; check Vercel function logs, URI encoding, Atlas database-user credentials, and Atlas Network Access. Never post connection strings, passwords, JWT secrets, or API keys into chat or logs.
+
+MongoDB connection pools are bounded, and concurrent startup requests reuse the same connection attempt. The health endpoint checks database readiness rather than only confirming that the HTTP process is alive.
 
 Example local commands from PowerShell:
 

@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import mongoose from "mongoose";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -32,7 +33,11 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_request, response) => {
-  response.json({ status: "ok" });
+  const databaseReady = mongoose.connection.readyState === 1;
+  response.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? "ok" : "unavailable",
+    database: databaseReady ? "connected" : "disconnected",
+  });
 });
 app.use("/api/auth", authRoutes);
 app.use("/api/parent", parentRoutes);
